@@ -33,10 +33,36 @@ def update_prmt_dqn(scope_main):
     sess.run( [tf.assign(t , q)for t,q in zip(target_prmts , q_prmts)])  #***
     print("updating target-network parmeters...")
 
-def local2global():
+#
+# def local2global():
 	
 
-def global2local():
-    
+# def global2local():
+
+
+
+ 
+# ========= Error Raise =========
+
+def is_list(hiddens):
+    if not isinstance(hiddens, list):
+        if isinstance(hiddens, int):
+            h = []
+            h.append(hiddens)
+            hiddens = h
+            return hiddens
+        else:
+            raise ValueError("hiddens should be the type of INT or LIST")
+    return hiddens
+
+
+# if dueling, hiddens_a & hiddens_v should not be None
+def dueling_has_hiddens(hiddens_1, hiddens_2):
+    if hiddens_1 and hiddens_1 is not None:
+        hiddens_1 = is_list(hiddens_1)
+        hiddens_2 = is_list(hiddens_2)
+        return [hiddens_1, hiddens_2]
+    else:
+        raise AttributeError("hiddens_v & hiddens_a should not be None")
 
     
