@@ -13,7 +13,8 @@ def mlp_frame(hiddens,
               scope=None, 
               dueling=False, 
               hiddens_a=None, 
-              hiddens_v=None, 
+              hiddens_v=None,
+              activation_fn = tf.nn.relu,
               activation_fn_v=tf.nn.relu, 
               activation_fn_a=tf.nn.relu, 
               w_init = tf.truncated_normal_initializer(0 , 0.3),
@@ -26,7 +27,7 @@ def mlp_frame(hiddens,
         out = inpt  
         hiddens = U.is_list(hiddens)
         for hidden in hiddens:
-            out = layers.fully_connected(out,  num_outputs=hidden, weights_initializer=w_init, activation_fn=tf.nn.relu)
+            out = layers.fully_connected(out,  num_outputs=hidden, weights_initializer=w_init, activation_fn=activation_fn)
         if not continu:
             if dueling:
                 hiddens_a, hiddens_v = U.dueling_has_hiddens(hiddens_a, hiddens_v)
