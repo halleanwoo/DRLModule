@@ -8,15 +8,15 @@ class Agent(object):
     def __init__(self, 
                  scope_main, 
                  env, 
-                 dueling = False, 
-                 double = False, 
+                 dueling=False, 
+                 double=False, 
                  sess=None, 
-                 gamma = 0.8, 
-                 epsilon = 0.8,  
-                 out_graph = False, 
-                 out_dqn = True, 
-                 clip_norm = None,
-                 continu = False,
+                 gamma=0.8, 
+                 epsilon=0.8,  
+                 out_graph=False, 
+                 out_dqn=True, 
+                 clip_norm=None,
+                 continu=False,
                  ):
         self.gamma = gamma
         self.epsilon = epsilon
@@ -26,8 +26,14 @@ class Agent(object):
         self.q_his = []
         self.qq = []
         
-        self.action_dim = env.action_space.n
         self.state_dim = env.observation_space.shape[0]
+        if continu:
+            self.action_dim = env.action_space.shape[0]
+            self.bound_low = env.action_space.low
+            self.bound_high = env.action_space.high
+        else:
+            self.action_dim = env.action_space.n
+        
 
         self.scope_main = scope_main
         self.dueling = dueling
@@ -35,10 +41,6 @@ class Agent(object):
         self.out_dqn = out_dqn
         self.clip_norm = clip_norm
 
-        if continu:
-            self.bound_low = env.action_space.low
-            self.bound_high = env.action_space.high
-    
     # ===============choose action===================  
     # ---------------discrete action-----------------
     # choose discrete action
@@ -71,10 +73,11 @@ class Agent(object):
 
     def choose_action_continu(self, current_state):
         current_state = current_state[np.newaxis , :] 
-        action = self.sess.run(self.action, feed_dict={self.inputs_q: current_state})[0]
+        action = self.sess.run(self.action, feed_dict={self.state: current_state})[0]
         return action
          
     # ===========update parmerters=============
+    # ----------------dqn---------------------
     # upadate parmerters
     def update_prmt(self):
         q_prmts = tf.get_collection( tf.GraphKeys.GLOBAL_VARIABLES ,  self.scope_main + "/q_network"  )
@@ -82,6 +85,7 @@ class Agent(object):
         self.sess.run( [tf.assign(t , q)for t,q in zip(target_prmts , q_prmts)])  #***
         # print("updating target-network parmeters...")
 
+    # ----------------a3c---------------------
     # a3c: apply gradient & update parm   
     def a3c_local2global(self, feed_dict):  
         self.sess.run([self.update_a_op, self.update_c_op], feed_dict) 
@@ -222,10 +226,21 @@ class DQNAgent(Agent):
 
 
 class A3CAgent(Agent):
-    def __init__(self, scope, env, global_net, continu = False,):
+    def __init__(self, 
+                 scope, 
+                 env, 
+                 sess,
+                 global_net=None,
+                 OPT_A=None,
+                 OPT_C=None, 
+                 continu = False,):
         # global_net 
         # only need the network frame without training
-        super().__init__(scope, env, global_net, continu)
+        super().__init__(scope_main=scope, 
+                         env=env,
+                         continu=continu,
+                         )
+        self.sess = sess
         if scope == "global_net":
             with tf.variable_scope(scope):
                 self.state = tf.placeholder(dtype=tf.float32, shape=[None, self.state_dim], name="state")
@@ -243,6 +258,10 @@ class A3CAgent(Agent):
 
                 mu, sigma, self.v = self._network()
 
+                with tf.variable_scope("critic_loss"):
+                    td_error = tf.subtract(self.v_target, self.v, name="td_error")
+                    self.critic_loss = tf.reduce_mean(tf.square(td_error))
+
                 # loss of tha actor & critic
                 with tf.variable_scope("action_loss"):
                     norm_dist = self.action_continu_norm_dist(mu, sigma)
@@ -250,11 +269,7 @@ class A3CAgent(Agent):
                     exp_v = log_prob * td_error
                     entropy = norm_dist.entropy()
                     self.exp_v = 0.01 * entropy + exp_v
-                    self.a_loss = tf.reduce_mean(-self.exp_v)
-
-                with tf.variable_scope("critic_loss"):
-                    td_error = tf.subtract(self.v_target, self.v, name="td_error")
-                    self.critic_loss = tf.reduce_mean(tf.square(td_error))
+                    self.actor_loss = tf.reduce_mean(-self.exp_v)
 
                 # local_parm
                 with tf.name_scope('local_grad'):
@@ -266,12 +281,12 @@ class A3CAgent(Agent):
                 with tf.name_scope('sync'):
                     # global2local
                     with tf.name_scope('pull'): 
-                        self.pull_a_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.a_params, globalAC.a_params)] 
-                        self.pull_c_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.c_params, globalAC.c_params)]
+                        self.pull_a_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.a_params, global_net.a_params)] 
+                        self.pull_c_params_op = [l_p.assign(g_p) for l_p, g_p in zip(self.c_params, global_net.c_params)]
                     # local2global
                     with tf.name_scope('push'):
-                        self.update_a_op = OPT_A.apply_gradients(zip(self.a_grads, globalAC.a_params))
-                        self.update_c_op = OPT_C.apply_gradients(zip(self.c_grads, globalAC.c_params))
+                        self.update_a_op = OPT_A.apply_gradients(zip(self.a_grads, global_net.a_params))
+                        self.update_c_op = OPT_C.apply_gradients(zip(self.c_grads, global_net.c_params))
 
     def _network(self):
         # with tf.variable_scope(scope):
